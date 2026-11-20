@@ -63,3 +63,17 @@ class BulkDiscount(DiscountStrategy):
         if total >= self.__threshold:
             return total - self.__amount
         return total
+
+
+class StudentDiscount(DiscountStrategy):
+    """Fourth strategy (Section 2.4): a flat 5% student discount.
+
+    Added without changing Order at all -- Order still just calls apply().
+    This is the point of the Strategy pattern: new behaviour, no edits to the
+    class that uses it.
+    """
+
+    STUDENT_RATE: float = 5.0
+
+    def apply(self, total: float) -> float:
+        return total * (1 - StudentDiscount.STUDENT_RATE / 100)
