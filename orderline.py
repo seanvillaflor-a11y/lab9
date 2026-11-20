@@ -2,9 +2,16 @@ from product import Product
 
 
 class OrderLine:
-    """One line of an order: a product and the quantity requested."""
+    """One line of an order: a product and the quantity requested.
+
+    Lab 9 validation: the OrderLine owns the 'quantity must be greater than
+    zero' rule and enforces it itself, rather than trusting every caller.
+    """
 
     def __init__(self, product: Product, quantity: int) -> None:
+        if quantity <= 0:
+            raise ValueError("Quantity must be greater than zero.")
+
         self.__product = product
         self.__quantity = quantity
 
