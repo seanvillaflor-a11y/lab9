@@ -1,0 +1,220 @@
+INF1103 Lab 9 - "Predict First" Answers
+=======================================
+
+For each item: the prediction, what actually happened when run, and what
+was changed if the prediction did not match.
+
+
+1. Section 2.1 - Without Strategy, where does a 5% student discount go?
+------------------------------------------------------------------------
+Prompt: The business now wants a 5% student discount. Without the Strategy
+pattern, which class and method must change? Answer again for the Strategy
+version after Section 2.
+
+Prediction (no Strategy):
+  Order.calculate_total() must change. The if/elif block that chooses between
+  "none", "percentage" and "bulk" would need a new "student" branch, so every
+  new discount edits the same method. That breaks the Open/Closed Principle.
+
+Prediction (with Strategy):
+  No existing class changes. I add one new class, StudentDiscount, that
+  implements apply(). Order is untouched because it only calls
+  self.discount.apply(total).
+
+Actual:
+  Confirmed. StudentDiscount was added in discount.py as a new DiscountStrategy
+  subclass and plugged straight into Order via set_discount(), with zero edits
+  to Order. The test test_new_strategy_needs_no_change_to_order even defines a
+  fresh strategy inside the test and it works through Order unchanged.
+
+Match? Yes. No change needed.
+Why it matters: this is exactly the OCP win the Strategy pattern buys - Order
+is closed for modification but the set of discounts is open for extension.
+
+
+2. Section 2.3 - Order total of 250 with bulk, then percentage
+------------------------------------------------------------------------
+Prompt: Create an order whose lines add up to 250. What does calculate_total()
+return with BulkDiscount(200, 20)? What if you then call
+set_discount(PercentageDiscount(10)) on the same order?
+
+Prediction:
+  BulkDiscount(200, 20): 250 >= 200, so 250 - 20 = 230.
+  After set_discount(PercentageDiscount(10)): 10% off 250 = 225.0.
+
+Actual:
+  Confirmed. test_order_uses_bulk_then_percentage_after_set_discount builds a
+  250 subtotal (125.00 x 2), gets 230 with the bulk strategy, then 225.0 after
+  swapping to PercentageDiscount(10).
+
+Match? Yes. No change needed.
+Why it matters: set_discount() changes behaviour at run time without rebuilding
+the order, because the strategy is a swappable collaborator, not baked in.
+
+
+3. Section 2.4 - Relationship between Order and DiscountStrategy
+------------------------------------------------------------------------
+Prompt: Which relationship best describes Order and DiscountStrategy -
+association, aggregation or composition? Could two orders share the same
+PercentageDiscount object? Give a multiplicity for each end.
+
+Prediction:
+  Association. A discount is something the order USES, not a part the order
+  owns and destroys. The strategy is created independently and passed in, and
+  the same PercentageDiscount(10) object can be shared by many orders because
+  it holds no per-order state. Multiplicity: Order 1 ---- 0..* uses ---- 1
+  DiscountStrategy (each order has exactly one strategy; one strategy object
+  can be used by many orders).
+
+Actual:
+  Confirmed. Order stores a reference to a DiscountStrategy passed in (or the
+  default NoDiscount()); it never builds a per-order copy, so one strategy
+  object can safely back several orders. The strategies carry no order data.
+
+Match? Yes. No change needed.
+Why it matters: because it is association (not composition), strategies are
+reusable and swappable, which is the whole point.
+
+
+4. Section 3.2 - ProductFactory.create("service", ...)
+------------------------------------------------------------------------
+Prompt: What happens if you call ProductFactory.create("service", ...)? Which
+line raises the exception, and what happens if nothing catches it?
+
+Prediction:
+  The final line of ProductFactory.create() runs because "service" matches
+  neither "physical" nor "digital", so it raises
+  ValueError("Unknown product type: service"). If nothing catches it, the
+  exception propagates up and crashes the program with a traceback.
+
+Actual:
+  Confirmed. test_unknown_type_raises_value_error asserts a ValueError is
+  raised. In the menu and in load_products() the call is wrapped in
+  try/except ValueError, so there it is reported and the program keeps running
+  instead of crashing.
+
+Match? Yes. No change needed.
+Why it matters: the factory centralises the "unknown type" decision in one
+place, and callers decide whether to catch it.
+
+
+5. Section 3.3 - Adding a BundleProduct before vs after the factory
+------------------------------------------------------------------------
+Prompt: Suppose a new BundleProduct type is added. How many places change
+before the factory, and how many after? Why does the factory still break OCP,
+and why is that acceptable here?
+
+Prediction:
+  Before the factory: every place that creates a product directly would change
+  - create_starter_data(), handle_add() in the menu, and the persistence
+    rebuild - so roughly three or more call sites.
+  After the factory: one place, ProductFactory.create() (plus the persistence
+  mapping that picks the "extra" value). All callers just pass a new type
+  string.
+  The factory still breaks OCP because create() itself has an if/elif that
+  must gain a new branch for BundleProduct. That is acceptable for a small
+  app: the change is isolated to a single, obvious method instead of being
+  scattered across the codebase.
+
+Actual:
+  Confirmed by inspection. All creation in inventorymanager.py and
+  product_from_dict() now routes through ProductFactory.create(); only that
+  method knows PhysicalProduct and DigitalProduct.
+
+Match? Yes. No change needed.
+
+
+6. Section 4 - Should DigitalProduct skip the "stock >= 0" rule? (LSP)
+------------------------------------------------------------------------
+Prompt: If Product validates that stock cannot go negative, should
+DigitalProduct be allowed to skip or change that rule? Why?
+
+Answer:
+  No. Validation that lives in Product is part of the contract every Product
+  promises. If DigitalProduct skipped or weakened it (e.g. allowed negative
+  stock), a DigitalProduct could no longer stand in for a Product, which
+  violates the Liskov Substitution Principle. DigitalProduct inherits the same
+  constructor validation and the same update_stock() rule unchanged, so both
+  subclasses honour the parent's contract. If "stock" truly made no sense for
+  digital products, the right fix is to rethink where stock lives on the base
+  class, not to break the rule in the subclass.
+
+Match? Yes - consistent with the Lab 8 LSP conclusion.
+
+
+7. Section 5.1 - get_positive_float with abc, then -5, then 12.50
+------------------------------------------------------------------------
+Prompt: A user enters abc, then -5, then 12.50. Write exactly what prints after
+each entry and what value is returned.
+
+Prediction:
+  "abc"   -> float("abc") raises ValueError -> prints
+             "Please enter a valid number, e.g. 12.50", then loops.
+  "-5"    -> float ok but -5 <= 0 -> prints
+             "Please enter a number greater than zero.", then loops.
+  "12.50" -> float ok and > 0 -> returns 12.5 (no message).
+
+Actual:
+  Confirmed by reading the code path and by the loop logic. The conversion
+  error and the range error print different messages, and only a valid
+  positive number returns.
+
+Match? Yes. No change needed.
+
+
+8. Section 5.2 - Loading products.csv, then renaming it
+------------------------------------------------------------------------
+Prompt: Before running, write how many products load, which messages print and
+in what order. Then rename products.csv: which of except, else and finally run?
+
+Prediction (file present):
+  Rows after the header:
+    physical,P001,Desk Lamp,25.00,10    -> loads
+    digital,D001,Photo Editor,49.90,100 -> loads
+    service,S001,Installation,30.00,5   -> ValueError (unknown type) -> skipped
+    physical,P002,Office Chair,abc,3     -> ValueError (float("abc")) -> skipped
+    physical,P003,Monitor Stand,39.50,7  -> loads
+  So 3 products load. Order of messages:
+    "Skipped bad row [...service...]"
+    "Skipped bad row [...abc...]"
+    "3 products loaded."
+    "Load attempt finished."
+  Here else runs (file opened) and finally runs; except FileNotFoundError does
+  NOT run.
+
+Prediction (file renamed / missing):
+  open() raises FileNotFoundError -> except prints
+  "Products file not found: <path>". else does NOT run (no successful open),
+  finally still prints "Load attempt finished." So except + finally run, not
+  else.
+
+Actual:
+  Confirmed by test_bad_rows_skipped_valid_rows_loaded (count == 3, exactly two
+  "Skipped bad row" messages, "3 products loaded." and "Load attempt finished."
+  present) and test_missing_file_handled_gracefully (count == 0, "Products file
+  not found" and "Load attempt finished." present, no crash).
+
+Match? Yes. No change needed.
+Why it matters: else holds the work that should run only after a clean open;
+finally runs either way, which is why the "finished" line always appears.
+
+
+Reflection (Section 8)
+------------------------------------------------------------------------
+- Over-engineering: adding a Strategy for something with only one behaviour
+  (e.g. how a product id is formatted) would add classes for no gain. A pattern
+  is a design decision, not a default.
+- The Factory moved the OCP issue from many callers into one method. That is a
+  good trade for this size of app: one obvious place to edit beats a scattered
+  change, and the rest of the code depends only on Product.
+- Skipping bad rows suits a best-effort import. Rejecting the whole file is
+  better when rows are interdependent or a partial load would corrupt state -
+  e.g. a financial ledger where every line must balance.
+- Validation failure vs exception: validation is us refusing bad-but-typed data
+  up front (price <= 0 -> we raise ValueError on purpose). An exception is an
+  operation failing at runtime (float("abc") raising ValueError, or a missing
+  file raising FileNotFoundError). We decide the first; the runtime raises the
+  second, and we catch it.
+- For the group project, a Factory could centralise how report/record objects
+  are built, and a Strategy could swap scoring/formatting rules. If there is
+  only ever one rule, both would be over-engineering.
